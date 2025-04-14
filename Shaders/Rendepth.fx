@@ -135,11 +135,11 @@ uniform float2 mousePosition <
 >;
 
 float getStereoStrength() {
-	return stereoStrength / 100.0 * 0.8 + 0.1;
+	return stereoStrength / 100.0 * 1.25 + 0.25;
 }
 
 float getStereoDepth() {
-	return stereoDepth / 100.0 * 0.5 + 0.25;
+	return stereoDepth / 100.0 * 2.0 - 0.25;
 }
 
 float getStereoOffset() {
