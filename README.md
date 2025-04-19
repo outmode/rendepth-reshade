@@ -12,17 +12,13 @@
 
 ## 3D Screenshots
 
-![ACShadows_Crouch_anaglyph](https://github.com/user-attachments/assets/c7ea9e1e-f611-40b7-8572-8e7e66d33eb3)
+![Shadows_Roof_anaglyph](https://github.com/user-attachments/assets/050b2b3c-455f-4ea5-98d9-cfd17bcc1f18)
 
-![ACShadows_Crouch_sbs](https://github.com/user-attachments/assets/166b49b1-2cc1-4fdb-b299-b82d6815ac7a)
+![Shadows_Roof_sbs](https://github.com/user-attachments/assets/8dd7c0f3-2361-45de-a8e6-1de9c072d83d)
 
-![ACShadows_Blade_anaglyph](https://github.com/user-attachments/assets/c3499474-3d5e-4498-a20d-29d4509be2cd)
+![RoboCop_TV_anaglyph](https://github.com/user-attachments/assets/6843d61f-0f51-40e7-84d4-5de84fcd2fda)
 
-![ACShadows_Blade_sbs](https://github.com/user-attachments/assets/64ebdffe-7f25-4a63-b3ab-991fc0c6799f)
-
-![ACShadows_Stereo_Cursor_anaglyph](https://github.com/user-attachments/assets/ab7f0c18-c9f3-457f-a38b-0d64d5435fa2)
-
-![ACShadows_Stereo_Cursor_sbs](https://github.com/user-attachments/assets/351018ef-ec0e-4fda-bf66-e592232a2822)
+![RoboCop_TV_sbs](https://github.com/user-attachments/assets/dfd4b66f-5288-4504-804a-b85b8f7a65d3)
 
 ## Installation
 
@@ -39,7 +35,11 @@
 
 ## Settings
 
-After installation, press the Reshade key (default `Home` key) to access the menu. Make sure the checkbox next to `Rendepth [Rendepth.fx]` is checked to enable the 2D-to-3D conversion shader. In the Rendepth menu, the top slider is the distance between your eyes. In most cases you can set the value to `100` for maximum 3D effect, though lowering the value can help mitigate artifacts. The middle option controls how strong the depth is evaluated to. It is typically safe to increase this value to `100` for a more extreme depth range. The bottom most slider is the parallax overlap. This shifts the images left or right to make the overlap more comfortable (plane of focus). This value is content dependent but usually acceptable near the center. For most games, setting the values to `100` `100` `64` provides the best effect. After you find acceptable settings, click the `Performance mode` checkbox on the bottom right to optimize the shader performance.
+After installation, press the Reshade key (default `Home` key) to access the menu. Make sure the checkbox next to `Rendepth [Rendepth.fx]` is checked to enable the 2D-to-3D conversion shader. In the Rendepth menu, the top slider is the distance between your eyes. In most cases you can set the value to `100` for maximum 3D effect, though lowering the value can help mitigate artifacts. The middle option controls how strong the depth is evaluated to. It is typically safe to increase this value to `100` for a more extreme depth range. The bottom most slider is the parallax overlap. This shifts the images left or right to make the overlap more comfortable (plane of focus). This value is content dependent but usually acceptable near the center. For most games, setting the values to `75` `100` `50` provides a good result. After you find acceptable settings, click the `Performance mode` checkbox on the bottom right to optimize the shader performance.
+
+## Warning
+
+Recommended for single player games only. Running with online games may trigger anti-cheat systems.
 
 ## Troubleshooting
 
