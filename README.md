@@ -20,7 +20,16 @@
 
 ![RoboCop_TV_sbs](https://github.com/user-attachments/assets/dfd4b66f-5288-4504-804a-b85b8f7a65d3)
 
-## Installation
+## Simple Install
+
+- Download the latest Reshade installer from: https://reshade.me
+- Run the Reshade executable and choose the game you wish to mod.
+- Selected graphics API is usually correct, only the "Standard effects" are needed.
+- On the list of effects to install, scroll all the way down and find "Rendepth".
+- Ensure you click the checkbox twice, so the shaders are selected.
+- Click Next to complete the installation.
+  
+## Manual Install
 
 - Download the latest Reshade installer from: https://reshade.me
 - Run the Reshade executable and choose the game you wish to mod.
@@ -31,7 +40,6 @@
 - In the `Settings` tab, click `+` to add a new `Effect search paths` for the `Shaders` folder you downloaded.
 - Click `+` on the `Texture search paths` to add a new path to the `Textures` folder you downloaded.
 - Go back to the `Home` Reshade tab and click `Reload`.
-- See `Rendepth [Rendepth.fx]` appear in the list, and click the checkbox to enable it.
 
 ## Settings
 
