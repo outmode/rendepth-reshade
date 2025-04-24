@@ -1,5 +1,5 @@
 # Rendepth Reshade
-![Rendepth_Reshade_Title](https://github.com/user-attachments/assets/ef0a839f-d640-4399-9f48-5f993e8d1248)
+![Rendepth_Reshade_Title_120](https://github.com/user-attachments/assets/6aa30869-5bda-4090-b44b-b1f2e162cb33)
 
 2D-to-3D Conversion Reshade Plug-In.
 
