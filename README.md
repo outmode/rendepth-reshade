@@ -29,6 +29,14 @@
 - On the list of effects to install, scroll all the way down and find "Rendepth".
 - Ensure you click the checkbox twice, so the shaders are selected.
 - Click Next to complete the installation.
+
+## LeiaSR™ Compatibility (Odyssey 3D/SpatialLabs)
+
+- Follow this for improved performance on LeiaSR™ compatible 3D displays.
+- Download the lastest Reshade with full add-on support: https://reshade.me
+- On the list of add-ons to install, select "3DGameBridge".
+- It enables automatically, but can be toggled from the `Add-Ons` menu in-game.
+- Once enabled, it's not necessary to manually switch to 3D mode on the display.
   
 ## Manual Install
 
@@ -41,6 +49,7 @@
 - In the `Settings` tab, click `+` to add a new `Effect search paths` for the `Shaders` folder you downloaded.
 - Click `+` on the `Texture search paths` to add a new path to the `Textures` folder you downloaded.
 - Go back to the `Home` Reshade tab and click `Reload`.
+- For 
 
 ## Settings
 
