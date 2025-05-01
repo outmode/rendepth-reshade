@@ -172,7 +172,7 @@ float getDepth(sampler2D tex, float2 uv, bool adjust = true) {
 #if RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
 	depth = (exp(depth * log(1.01)) - 1.0) / 0.01;
 #endif
-#if RESHADE_DEPTH_INPUT_IS_REVERSED
+#if RESHADE_DEPTH_INPUT_IS_REVERSED == 0
 	depth = 1.0 - depth;
 #endif
 	if (adjust) depth = 2.0 / (-99.0 * depth + 101.0);
