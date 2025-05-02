@@ -20,6 +20,7 @@
 
 ![StillWakes_120_2_sbs](https://github.com/user-attachments/assets/af4e6b26-9674-4a33-9928-83176e0a83f5)
 
+#### Enjoying Rendepth? Consider donating to support further development: https://rendepth.com/donate
 
 ## Simple Install
 
