@@ -49,7 +49,6 @@
 - In the `Settings` tab, click `+` to add a new `Effect search paths` for the `Shaders` folder you downloaded.
 - Click `+` on the `Texture search paths` to add a new path to the `Textures` folder you downloaded.
 - Go back to the `Home` Reshade tab and click `Reload`.
-- For 
 
 ## Settings
 
