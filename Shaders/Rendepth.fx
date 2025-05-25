@@ -36,7 +36,7 @@ sampler2D depthSampler {
 	AddressW = BORDER;
 };
 
-texture2D cursorTexture < source = "Rendepth/Cursor_64px.png"; > {
+texture2D cursorTexture < source = "Cursor_64px.png"; > {
 	Format = RGBA8;
 	MipLevels = 7;
 	Width = 64;
@@ -46,16 +46,20 @@ sampler2D cursorSampler {
 	Texture = cursorTexture;
 };
 
-#define Anaglyph 0
-#define Side_By_Side 1
-#define Color_Plus_Depth 2
-#define Horizontal 3
-#define Vertical 4
-#define Checkerboard 5
+#define Monoscopic 0
+#define Anaglyph 1
+#define Side_By_Side 2
+#define Top_Over_Bottom 3
+#define Color_Plus_Depth 4
+#define Horizontal_Interlace 5
+#define Vertical_Interlace 6
+#define Checkerboard 7
 
 #define Left_Side 0
 #define Right_Side 1
-#define Both_Sides 2
+#define Top_Side 2
+#define Bottom_Side 3
+#define Both_Sides 4
 
 static const float zNear = 0.1;
 static const float zFar = 100.0;
@@ -78,7 +82,7 @@ uniform int stereoMode <
 	ui_label = "Display Mode";
 	ui_tooltip = "3D Output Type";
 	ui_type = "combo"; 
-	ui_items = "Anaglyph\0Side-by-Side\0Color + Depth\0Horizontal\0Vertical\0Checkerboard\0";
+	ui_items = "Monoscopic\0Anaglyph\0Side-by-Side\0Top-over-Bottom\0Color + Depth\0Horizontal\0Vertical\0Checkerboard\0";
 > = 0;
 
 uniform float stereoStrength <
@@ -187,6 +191,10 @@ float2 getUV(float2 uv, int horz, int vert) {
 		result.x = uv.x * 2.0;
 	} else if (horz == Right_Side) {
 		result.x = (uv.x - 0.5) * 2.0;
+	} else if (vert == Top_Side) {
+		result.y = uv.y * 2.0;
+	} else if (vert == Bottom_Side) {
+		result.y = (uv.y - 0.5) * 2.0;
 	}
 	return result;
 }
@@ -205,10 +213,13 @@ float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosit
 	} else if (stereoMode == Side_By_Side) {
 		if (horz == Left_Side) result = leftColor;
 		else result = rightColor;
-	} else if (stereoMode == Horizontal) {
+	} else if (stereoMode == Top_Over_Bottom) {
+		if (vert == Top_Side) result = leftColor;
+		else result = rightColor;
+	} else if (stereoMode == Horizontal_Interlace) {
 		if (currentPixel.y % 2 == 0) result = leftColor;
 		else result = rightColor;
-	} else if (stereoMode == Vertical) {
+	} else if (stereoMode == Vertical_Interlace) {
 		if (currentPixel.x % 2 == 0) result = leftColor;
 		else result = rightColor;
 	} else if (stereoMode == Checkerboard) {
@@ -253,11 +264,27 @@ float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert) 
 float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
 	float4 color = float4(0, 0, 0, 1);
 	float2 screenSize = float2(BUFFER_WIDTH, BUFFER_HEIGHT);
-	int currentSide = pixelPosition.x < BUFFER_WIDTH * 0.5 ? Left_Side : Right_Side;
-	if (stereoMode == Side_By_Side) {
-		color.rgb = generateStereoImage(getUV(uv, currentSide, Both_Sides), pixelPosition, currentSide, Both_Sides);
+	int horizontalSide = pixelPosition.x < BUFFER_WIDTH * 0.5 ? Left_Side : Right_Side;
+	int verticalSide = pixelPosition.y < BUFFER_HEIGHT * 0.5 ? Top_Side : Bottom_Side;
+	if (stereoMode == Monoscopic) {
+		color.rgb = getColor(screenSampler, uv).rgb;
+	} else if (stereoMode == Side_By_Side) {
+		color.rgb = generateStereoImage(getUV(uv, horizontalSide, Both_Sides), pixelPosition, horizontalSide, Both_Sides);
 		float2 cursorCoord = mousePosition / float2(BUFFER_WIDTH, BUFFER_HEIGHT) * float2(0.5, 1.0) + 
-			currentSide * float2(0.5, 0.0);
+			horizontalSide * float2(0.5, 0.0);
+		float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / screenSize.y);
+		if (toggleCursor && abs(uv.x - cursorCoord.x) < cursorDim.x  && 
+			abs(uv.y - cursorCoord.y) < cursorDim.y) {
+			float4 iconColor = tex2D(cursorSampler, float2(((uv.x - cursorOffset.x) / cursorDim.x) * 2.0, 
+				(uv.y - cursorOffset.y) / cursorDim.y) - (cursorCoord / cursorDim) * float2(2, 1)  + 
+				float2(0.5 + cursorOffset.x, 0.5 + cursorOffset.y));
+			if (iconColor.a > 0.0) iconColor.rgb /= iconColor.a;
+			color.rgb = lerp(color.rgb, iconColor.rgb, iconColor.a);
+		}
+	} else if (stereoMode == Top_Over_Bottom) {
+		color.rgb = generateStereoImage(getUV(uv, Both_Sides, verticalSide), pixelPosition, Both_Sides, verticalSide);
+		float2 cursorCoord = mousePosition / float2(BUFFER_WIDTH, BUFFER_HEIGHT) * float2(1.0, 0.5) + 
+			(verticalSide - 2) * float2(0.0, 0.5);
 		float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / screenSize.y);
 		if (toggleCursor && abs(uv.x - cursorCoord.x) < cursorDim.x  && 
 			abs(uv.y - cursorCoord.y) < cursorDim.y) {
@@ -268,12 +295,12 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 			color.rgb = lerp(color.rgb, iconColor.rgb, iconColor.a);
 		}
 	} else if (stereoMode == Color_Plus_Depth) {
-		float2 scaled = uv * float2(1.0, 2.0) - float2(0.0, 0.5);
+		float2 scaled = uv * float2(1.0, 1.0) - float2(0.0, 0.0);
 		if (all(scaled > float2(0, 0)) && all(scaled < float2(1, 1))) {
-			if (currentSide == Left_Side) {
-				color.rgb = getColor(screenSampler, getUV(scaled, currentSide, Both_Sides)).rgb;
+			if (horizontalSide == Left_Side) {
+				color.rgb = getColor(screenSampler, getUV(uv, horizontalSide, Both_Sides)).rgb;
 			} else {
-				float depth = 1.0 - getDepth(depthSampler, getUV(scaled, currentSide, Both_Sides), false);
+				float depth = 1.0 - getDepth(depthSampler, getUV(uv, horizontalSide, Both_Sides), false);
 				color.rgb = depth.rrr;
 			}
 		}
@@ -282,7 +309,7 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 	}
 
 	if (showDepth) {
-		if (currentSide == Left_Side) {
+		if (horizontalSide == Left_Side) {
 			color.rgb = getColor(screenSampler, uv).rgb;
 		} else {
 			float depth = 1.0 - getDepth(depthSampler, uv, false);
