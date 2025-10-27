@@ -244,12 +244,16 @@ float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert) 
 	float2 maxUV = float2(1.0 - gutter, 1.0);
 
 	float aspectRatio = (float)BUFFER_WIDTH / BUFFER_HEIGHT;
+	float originalDepth = getDepth(depthSampler, clamp(uv, minUV, maxUV));
 
 	for (int i = 0; i < sampleCount; ++i) {
 		sampleUV.x = (depthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset();
 		minDepthLeft = min(minDepthLeft, getDepth(depthSampler, clamp(uv + sampleUV, minUV, maxUV)));
 		minDepthRight = min(minDepthRight, getDepth(depthSampler, clamp(uv - sampleUV, minUV, maxUV)));
 	}
+
+	minDepthLeft = min(minDepthLeft, originalDepth);
+	minDepthRight = min(minDepthRight, originalDepth);
 
 	parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale + getStereoOffset();
 	parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale + getStereoOffset();
