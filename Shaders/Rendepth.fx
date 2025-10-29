@@ -23,17 +23,17 @@
 texture2D screenTexture : COLOR;
 sampler2D screenSampler {
 	Texture = screenTexture;
-	AddressU = BORDER;
-	AddressV = BORDER;
-	AddressW = BORDER;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+	AddressW = CLAMP;
 };
 
 texture2D depthTexture : DEPTH;
 sampler2D depthSampler {
 	Texture = depthTexture;
-	AddressU = BORDER;
-	AddressV = BORDER;
-	AddressW = BORDER;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+	AddressW = CLAMP;
 };
 
 texture2D cursorTexture < source = "Cursor_64px.png"; > {
@@ -77,6 +77,13 @@ static const float3x3 rightFilter = float3x3(
 static const float3 gammaMap = float3(1.6, 0.8, 1.0);
 static const float2 cursorOffset = float2(0.0015, 0.0125);
 static const float cursorSize = 64.0;
+static const float2 screenSize = float2(BUFFER_WIDTH, BUFFER_HEIGHT);
+static const float aspectRatio = (float)BUFFER_WIDTH / BUFFER_HEIGHT;
+static const float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / screenSize.y);
+static const float2 tapSmooth = float2(0.25 / (float)BUFFER_WIDTH, 0.0);
+static const float gutter = 0.001;
+static const float2 minUV = float2(gutter, 0.0);
+static const float2 maxUV = float2(1.0 - gutter, 1.0);
 
 uniform int stereoMode <
 	ui_label = "Display Mode";
@@ -151,12 +158,11 @@ float getStereoOffset() {
 }
 
 float getParallax(float depth) {
-	depth = -getStereoDepth() / depth;
-	return depth;
+	return -getStereoDepth() / depth;
 }
  
 float4 getColor(sampler2D tex, float2 uv) {
-	float4 color = tex2Dlod(tex, float4(uv, 0.0, 0.0)).rgba;
+	float4 color = tex2D(tex, uv).rgba;
 	return color;
 }
 
@@ -172,7 +178,7 @@ float getDepth(sampler2D tex, float2 uv, bool adjust = true) {
 #if RESHADE_DEPTH_INPUT_IS_UPSIDE_DOWN
 	uv.y = 1.0 - uv.y;
 #endif
-	float depth = tex2Dlod(tex, float4(uv, 0.0, 0.0)).r;
+	float depth = tex2D(tex, uv).r;
 #if RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
 	depth = (exp(depth * log(1.01)) - 1.0) / 0.01;
 #endif
@@ -235,16 +241,10 @@ float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert) 
 	float minDepthRight = 1.0;
 	float parallaxLeft = 0.0;
 	float parallaxRight = 0.0;
-	float3 colorLeft = float3(0, 0, 0);
-	float3 colorRight = float3(0, 0, 0);
+
 	float2 sampleUV = float2(0, 0);
 
-	static const float gutter = 0.001;
-	float2 minUV = float2(gutter, 0.0);
-	float2 maxUV = float2(1.0 - gutter, 1.0);
-
-	float aspectRatio = (float)BUFFER_WIDTH / BUFFER_HEIGHT;
-	float originalDepth = getDepth(depthSampler, clamp(uv, minUV, maxUV));
+	const float centerDepth = getDepth(depthSampler, clamp(uv, minUV, maxUV));
 
 	for (int i = 0; i < sampleCount; ++i) {
 		sampleUV.x = (depthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset();
@@ -252,52 +252,40 @@ float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert) 
 		minDepthRight = min(minDepthRight, getDepth(depthSampler, clamp(uv - sampleUV, minUV, maxUV)));
 	}
 
-	minDepthLeft = min(minDepthLeft, originalDepth);
-	minDepthRight = min(minDepthRight, originalDepth);
+	minDepthLeft = min(minDepthLeft, centerDepth);
+	minDepthRight = min(minDepthRight, centerDepth);
 
 	parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale + getStereoOffset();
 	parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale + getStereoOffset();
 
-	colorLeft = getColor(screenSampler, clamp(uv + float2(parallaxLeft, 0.0), minUV, maxUV)).rgb;
-	colorRight = getColor(screenSampler, clamp(uv  - float2(parallaxRight, 0.0), minUV, maxUV)).rgb;
+	float3 colorLeft = getColor(screenSampler, clamp(uv + float2(parallaxLeft, 0.0) + tapSmooth, minUV, maxUV)).rgb;
+	float3 colorRight = getColor(screenSampler, clamp(uv - float2(parallaxRight, 0.0) - tapSmooth, minUV, maxUV)).rgb;
 
 	return combineStereoViews(colorLeft, colorRight, pixelPosition, horz, vert);
+}
+
+float2 iconUV(float2 uv, float2 cursorCoord) {
+	return float2(((uv.x - cursorOffset.x) / cursorDim.x) * 2.0, 
+		(uv.y - cursorOffset.y) / cursorDim.y) - (cursorCoord / cursorDim) * float2(2, 1) + 
+		float2(0.5 + cursorOffset.x, 0.5 + cursorOffset.y);
 }
 
 [shader("pixel")]
 float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
 	float4 color = float4(0, 0, 0, 1);
-	float2 screenSize = float2(BUFFER_WIDTH, BUFFER_HEIGHT);
-	int horizontalSide = pixelPosition.x < BUFFER_WIDTH * 0.5 ? Left_Side : Right_Side;
-	int verticalSide = pixelPosition.y < BUFFER_HEIGHT * 0.5 ? Top_Side : Bottom_Side;
+	int horizontalSide = pixelPosition.x < screenSize.x * 0.5 ? Left_Side : Right_Side;
+	int verticalSide = pixelPosition.y < screenSize.y * 0.5 ? Top_Side : Bottom_Side;
+	float2 cursorCoord = float2(0, 0);
+
 	if (stereoMode == Monoscopic) {
 		color.rgb = getColor(screenSampler, uv).rgb;
 	} else if (stereoMode == Side_By_Side) {
 		color.rgb = generateStereoImage(getUV(uv, horizontalSide, Both_Sides), pixelPosition, horizontalSide, Both_Sides);
-		float2 cursorCoord = mousePosition / float2(BUFFER_WIDTH, BUFFER_HEIGHT) * float2(0.5, 1.0) + 
-			horizontalSide * float2(0.5, 0.0);
-		float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / screenSize.y);
-		if (toggleCursor && abs(uv.x - cursorCoord.x) < cursorDim.x  && 
-			abs(uv.y - cursorCoord.y) < cursorDim.y) {
-			float4 iconColor = tex2D(cursorSampler, float2(((uv.x - cursorOffset.x) / cursorDim.x) * 2.0, 
-				(uv.y - cursorOffset.y) / cursorDim.y) - (cursorCoord / cursorDim) * float2(2, 1)  + 
-				float2(0.5 + cursorOffset.x, 0.5 + cursorOffset.y));
-			if (iconColor.a > 0.0) iconColor.rgb /= iconColor.a;
-			color.rgb = lerp(color.rgb, iconColor.rgb, iconColor.a);
-		}
+		cursorCoord = mousePosition / screenSize * float2(0.5, 1.0) + horizontalSide * float2(0.5, 0.0);
 	} else if (stereoMode == Top_Over_Bottom) {
 		color.rgb = generateStereoImage(getUV(uv, Both_Sides, verticalSide), pixelPosition, Both_Sides, verticalSide);
-		float2 cursorCoord = mousePosition / float2(BUFFER_WIDTH, BUFFER_HEIGHT) * float2(1.0, 0.5) + 
-			(verticalSide - 2) * float2(0.0, 0.5);
-		float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / screenSize.y);
-		if (toggleCursor && abs(uv.x - cursorCoord.x) < cursorDim.x  && 
-			abs(uv.y - cursorCoord.y) < cursorDim.y) {
-			float4 iconColor = tex2D(cursorSampler, float2(((uv.x - cursorOffset.x) / cursorDim.x) * 2.0, 
-				(uv.y - cursorOffset.y) / cursorDim.y) - (cursorCoord / cursorDim) * float2(2, 1)  + 
-				float2(0.5 + cursorOffset.x, 0.5 + cursorOffset.y));
-			if (iconColor.a > 0.0) iconColor.rgb /= iconColor.a;
-			color.rgb = lerp(color.rgb, iconColor.rgb, iconColor.a);
-		}
+		cursorCoord = mousePosition / screenSize * float2(1.0, 0.5) + (verticalSide - 2) * float2(0.0, 0.5);
+		
 	} else if (stereoMode == Color_Plus_Depth) {
 		float2 scaled = uv * float2(1.0, 1.0) - float2(0.0, 0.0);
 		if (all(scaled > float2(0, 0)) && all(scaled < float2(1, 1))) {
@@ -310,6 +298,13 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 		}
 	} else {
 		color.rgb = generateStereoImage(uv, pixelPosition, Both_Sides, Both_Sides);
+	}
+
+	if (toggleCursor && (stereoMode == Side_By_Side || stereoMode == Top_Over_Bottom) &&
+			abs(uv.x - cursorCoord.x) < cursorDim.x && abs(uv.y - cursorCoord.y) < cursorDim.y) {
+		float4 iconColor = tex2D(cursorSampler, iconUV(uv, cursorCoord));
+		if (iconColor.a > 0.0) iconColor.rgb /= iconColor.a;
+		color.rgb = lerp(color.rgb, iconColor.rgb, iconColor.a);
 	}
 
 	if (showDepth) {
