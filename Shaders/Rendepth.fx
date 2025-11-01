@@ -64,7 +64,7 @@ sampler2D cursorSampler {
 static const float zNear = 0.1;
 static const float zFar = 100.0;
 static const float stereoScale = 50000.0;
-static const float depthSamples[5] = { 0.16, 0.27, 0.41, 0.66, 1.0 };
+static const float depthSamples[5] = { 0.125, 0.250, 0.375, 0.500, 0.625 };
 static const int sampleCount = 5;
 static const float3x3 leftFilter = float3x3(
 	float3(0.4561, -0.400822, -0.0152161),
@@ -80,7 +80,6 @@ static const float cursorSize = 64.0;
 static const float2 screenSize = float2(BUFFER_WIDTH, BUFFER_HEIGHT);
 static const float aspectRatio = (float)BUFFER_WIDTH / BUFFER_HEIGHT;
 static const float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / screenSize.y);
-static const float2 tapSmooth = float2(0.25 / (float)BUFFER_WIDTH, 0.0);
 static const float gutter = 0.001;
 static const float2 minUV = float2(gutter, 0.0);
 static const float2 maxUV = float2(1.0 - gutter, 1.0);
@@ -236,30 +235,30 @@ float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosit
 	return result;
 }
 
+float2 clampEdge(float2 inUV) {
+	const float edgeStretch = 0.333;
+	if (inUV.x < minUV.x) inUV.x = (minUV.x - inUV.x) * edgeStretch;
+	if (inUV.x > maxUV.x) inUV.x = maxUV.x + (maxUV.x - inUV.x) * edgeStretch;
+	return clamp(inUV, minUV, maxUV);
+}
+
 float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert) {
-	float minDepthLeft = 1.0;
-	float minDepthRight = 1.0;
-	float parallaxLeft = 0.0;
-	float parallaxRight = 0.0;
-
+	const float centerDepth = getDepth(depthSampler, clampEdge(uv));
+	float minDepthLeft = centerDepth;
+	float minDepthRight = centerDepth;
 	float2 sampleUV = float2(0, 0);
-
-	const float centerDepth = getDepth(depthSampler, clamp(uv, minUV, maxUV));
 
 	for (int i = 0; i < sampleCount; ++i) {
 		sampleUV.x = (depthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset();
-		minDepthLeft = min(minDepthLeft, getDepth(depthSampler, clamp(uv + sampleUV, minUV, maxUV)));
-		minDepthRight = min(minDepthRight, getDepth(depthSampler, clamp(uv - sampleUV, minUV, maxUV)));
+		minDepthLeft = min(minDepthLeft, getDepth(depthSampler, clampEdge(uv + sampleUV)));
+		minDepthRight = min(minDepthRight, getDepth(depthSampler, clampEdge(uv - sampleUV)));
 	}
 
-	minDepthLeft = min(minDepthLeft, centerDepth);
-	minDepthRight = min(minDepthRight, centerDepth);
+	float parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale + getStereoOffset();
+	float parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale + getStereoOffset();
 
-	parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale + getStereoOffset();
-	parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale + getStereoOffset();
-
-	float3 colorLeft = getColor(screenSampler, clamp(uv + float2(parallaxLeft, 0.0) + tapSmooth, minUV, maxUV)).rgb;
-	float3 colorRight = getColor(screenSampler, clamp(uv - float2(parallaxRight, 0.0) - tapSmooth, minUV, maxUV)).rgb;
+	float3 colorLeft = getColor(screenSampler, clampEdge(uv + float2(parallaxLeft, 0.0))).rgb;
+	float3 colorRight = getColor(screenSampler, clampEdge(uv - float2(parallaxRight, 0.0))).rgb;
 
 	return combineStereoViews(colorLeft, colorRight, pixelPosition, horz, vert);
 }
@@ -285,7 +284,6 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 	} else if (stereoMode == Top_Over_Bottom) {
 		color.rgb = generateStereoImage(getUV(uv, Both_Sides, verticalSide), pixelPosition, Both_Sides, verticalSide);
 		cursorCoord = mousePosition / screenSize * float2(1.0, 0.5) + (verticalSide - 2) * float2(0.0, 0.5);
-		
 	} else if (stereoMode == Color_Plus_Depth) {
 		float2 scaled = uv * float2(1.0, 1.0) - float2(0.0, 0.0);
 		if (all(scaled > float2(0, 0)) && all(scaled < float2(1, 1))) {
