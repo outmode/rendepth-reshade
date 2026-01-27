@@ -68,13 +68,13 @@ static const float stereoScale = 50000.0;
 static const float depthSamples[5] = { 0.125, 0.250, 0.375, 0.500, 0.625 };
 static const int sampleCount = 5;
 static const float3x3 leftFilter = float3x3(
-	float3(0.4561, -0.400822, -0.0152161),
-	float3(0.500484, -0.0378246, -0.0205971),
-	float3(0.176381 , -0.0157589, -0.00546856));
+	float3(0.439, 0.0, 0.0),
+	float3(0.447, 0.0, 0.0),
+	float3(0.148, 0.0, 0.0));
 static const float3x3 rightFilter = float3x3(
-	float3(-0.0434706, 0.378476, -0.0721527),
-	float3(-0.0879388 , 0.73364, -0.112961),
-	float3(-0.00155529, -0.0184503, 1.2264));
+	float3(0.0, 0.095, -0.018),
+	float3(0.0, 0.934, -0.028),
+	float3(0.0, -0.005, 1.057));
 static const float3 gammaMap = float3(1.6, 0.8, 1.0);
 static const float2 cursorOffset = float2(0.0015, 0.0125);
 static const float cursorSize = 512.0;
