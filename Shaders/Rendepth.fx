@@ -20,32 +20,6 @@
 
 #include "ReShade.fxh"
 
-texture2D screenTexture : COLOR;
-sampler2D screenSampler {
-	Texture = screenTexture;
-	AddressU = CLAMP;
-	AddressV = CLAMP;
-};
-
-texture2D depthTexture : DEPTH;
-sampler2D depthSampler {
-	Texture = depthTexture;
-	AddressU = CLAMP;
-	AddressV = CLAMP;
-};
-
-texture2D cursorTexture < source = "Cursor_512px.png"; > {
-	Format = RGBA8;
-	MipLevels = 7;
-	Width = 512;
-	Height = 512;
-};
-sampler2D cursorSampler {
-	Texture = cursorTexture;
-	AddressU = CLAMP;
-	AddressV = CLAMP;
-};
-
 #define Monoscopic 0
 #define Anaglyph 1
 #define Side_By_Side 2
@@ -84,6 +58,34 @@ static const float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / s
 static const float gutter = 0.001;
 static const float2 minUV = float2(gutter, 0.0);
 static const float2 maxUV = float2(1.0 - gutter, 1.0);
+static const int letterboxSize = 8;
+static const int letterboxStart = 4;
+
+texture2D screenTexture : COLOR;
+sampler2D screenSampler {
+	Texture = screenTexture;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+};
+
+texture2D depthTexture : DEPTH;
+sampler2D depthSampler {
+	Texture = depthTexture;
+	AddressU = BORDER;
+	AddressV = BORDER;
+};
+
+texture2D cursorTexture < source = "Cursor_512px.png"; > {
+	Format = RGBA8;
+	MipLevels = 7;
+	Width = 512;
+	Height = 512;
+};
+sampler2D cursorSampler {
+	Texture = cursorTexture;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+};
 
 uniform int stereoMode <
 	ui_label = "Display Mode";
@@ -119,25 +121,43 @@ uniform float stereoOffset <
 	ui_step = 1.0; 
 > = 50.0;
 
-uniform bool swapLeftRight <
+uniform bool letterboxFix <
 #if __RESHADE__ >= 40500
-    ui_text = "Press \'+\' to toggle side-by-side mouse cursor.";
+	ui_text = "Press \'+\' to toggle side-by-side mouse cursor.\nPress \'-\' to toggle 2D mode for unsupported scenes.";
 #endif
-	ui_label = "Swap Left/Right";
-	ui_tooltip = "Reverse Eyes";
+	ui_label = "Letterbox Fix";
+	ui_tooltip = "Reposition Depthmap Y-Axis";
 	ui_category = "Advanced Options";
 	ui_category_closed = true;
 > = false;
 
+uniform bool disableHotkeys <
+	ui_label = "Disable Hotkeys";
+	ui_tooltip = "Fix Key Binding Conflicts";
+	ui_category = "Advanced Options";
+> = false;
+
+uniform bool swapLeftRight <
+	ui_label = "Swap Left/Right";
+	ui_tooltip = "Display Eyes Reversed";
+	ui_category = "Advanced Options";
+> = false;
+
 uniform bool showDepth <
-	ui_label = "Show Depth Buffer";
-	ui_tooltip = "Z-Buffer Debug";
+	ui_label = "View Depth Buffer";
+	ui_tooltip = "Z-Buffer Split-Screen View";
 	ui_category = "Advanced Options";
 > = false;
 
 uniform bool toggleCursor < 
 	source = "key"; 
 	keycode = 0xBB; 
+	mode = "toggle"; 
+>;
+
+uniform bool toggleMono < 
+	source = "key"; 
+	keycode = 0xBD; 
 	mode = "toggle"; 
 >;
 
@@ -229,14 +249,14 @@ float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosit
 		if (horz == Left_Side) result = leftColor;
 		else result = rightColor;
 	} else if (stereoMode == Horizontal_Interlace) {
-		if (currentPixel.y % 2 == 0) result = leftColor;
+		if (currentPixel.y % 2.0 == 0.0) result = leftColor;
 		else result = rightColor;
 	} else if (stereoMode == Vertical_Interlace) {
-		if (currentPixel.x % 2 == 0) result = leftColor;
+		if (currentPixel.x % 2.0 == 0.0) result = leftColor;
 		else result = rightColor;
 	} else if (stereoMode == Checkerboard) {
-		if (currentPixel.x % 2 == 0 && currentPixel.y % 2 == 0) result = leftColor;
-		else if (currentPixel.x % 2 == 1 && currentPixel.y % 2 == 1) result = leftColor;
+		if (currentPixel.x % 2.0 == 0.0 && currentPixel.y % 2.0 == 0.0) result = leftColor;
+		else if (currentPixel.x % 2.0 == 1.0 && currentPixel.y % 2.0 == 1.0) result = leftColor;
 		else result = rightColor;
 	}
 	return result;
@@ -249,20 +269,25 @@ float2 clampEdge(float2 inUV) {
 	return clamp(inUV, minUV, maxUV);
 }
 
-float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert) {
-	const float centerDepth = getDepth(depthSampler, clampEdge(uv));
+float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, float2 displace) {
+	const float centerDepth = getDepth(depthSampler, clampEdge(uv + displace));
 	float minDepthLeft = centerDepth;
 	float minDepthRight = centerDepth;
 	float2 sampleUV = float2(0, 0);
 
 	for (int i = 0; i < sampleCount; ++i) {
 		sampleUV.x = (depthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset();
-		minDepthLeft = min(minDepthLeft, getDepth(depthSampler, clampEdge(uv + sampleUV)));
-		minDepthRight = min(minDepthRight, getDepth(depthSampler, clampEdge(uv - sampleUV)));
+		minDepthLeft = min(minDepthLeft, getDepth(depthSampler, clampEdge(uv + displace + sampleUV)));
+		minDepthRight = min(minDepthRight, getDepth(depthSampler, clampEdge(uv + displace - sampleUV)));
 	}
 
 	float parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale + getStereoOffset();
 	float parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale + getStereoOffset();
+
+	if (toggleMono && !disableHotkeys) {
+		parallaxLeft = 0.0;
+		parallaxRight = 0.0;
+	}
 
 	float3 colorLeft = getColor(screenSampler, clampEdge(uv + float2(parallaxLeft, 0.0))).rgb;
 	float3 colorRight = getColor(screenSampler, clampEdge(uv - float2(parallaxRight, 0.0))).rgb;
@@ -283,13 +308,29 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 	int verticalSide = pixelPosition.y < screenSize.y * 0.5 ? Top_Side : Bottom_Side;
 	float2 cursorCoord = float2(0, 0);
 
+	float2 letterboxOffset = float2(0, 0);
+	if (letterboxFix) {
+		int letterboxCheckCount = 0;
+		bool letterboxDepthValid = false;
+		for (int i = 1; i < 4; ++i) {
+			for (int j = letterboxStart; j < letterboxSize; ++j) {
+				float letterboxDepth = getDepth(depthSampler, float2(i, j) / letterboxSize);
+				if(!letterboxDepthValid && letterboxCheckCount > 8 && letterboxDepth > 0.05) {
+					letterboxOffset.y = clamp((letterboxStart - j + 1) / (float)letterboxSize, -1.0, 0.0);
+					letterboxDepthValid = true;
+				}
+				letterboxCheckCount++;
+			}
+		}
+	}
+
 	if (stereoMode == Monoscopic) {
 		color.rgb = getColor(screenSampler, uv).rgb;
 	} else if (stereoMode == Side_By_Side) {
-		color.rgb = generateStereoImage(getUV(uv, horizontalSide, Both_Sides), pixelPosition, horizontalSide, Both_Sides);
+		color.rgb = generateStereoImage(getUV(uv, horizontalSide, Both_Sides), pixelPosition, horizontalSide, Both_Sides, letterboxOffset);
 		cursorCoord = mousePosition / screenSize * float2(0.5, 1.0) + horizontalSide * float2(0.5, 0.0);
 	} else if (stereoMode == Top_Over_Bottom) {
-		color.rgb = generateStereoImage(getUV(uv, Both_Sides, verticalSide), pixelPosition, Both_Sides, verticalSide);
+		color.rgb = generateStereoImage(getUV(uv, Both_Sides, verticalSide), pixelPosition, Both_Sides, verticalSide, letterboxOffset);
 		cursorCoord = mousePosition / screenSize * float2(1.0, 0.5) + (verticalSide - 2) * float2(0.0, 0.5);
 	} else if (stereoMode == Color_Plus_Depth) {
 		float2 scaled = uv * float2(1.0, 1.0) - float2(0.0, 0.0);
@@ -304,14 +345,14 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 	} else if (stereoMode == Free_View) {
 		float2 freeUV = getUV(uv, horizontalSide, Both_Sides);
 		freeUV.y = freeUV.y * 2.0 - 0.5;
-		color.rgb = generateStereoImage(freeUV, pixelPosition, horizontalSide, Both_Sides);
+		color.rgb = generateStereoImage(freeUV, pixelPosition, horizontalSide, Both_Sides, letterboxOffset);
 		cursorCoord = mousePosition / screenSize * float2(0.5, 1.0) + horizontalSide * float2(0.5, 0.0);
 		cursorCoord.y = cursorCoord.y * 0.5 + 0.25;
 	} else {
-		color.rgb = generateStereoImage(uv, pixelPosition, Both_Sides, Both_Sides);
+		color.rgb = generateStereoImage(uv, pixelPosition, Both_Sides, Both_Sides, letterboxOffset);
 	}
 
-	if (toggleCursor && (stereoMode == Side_By_Side || stereoMode == Top_Over_Bottom || stereoMode == Free_View) &&
+	if ((toggleCursor && !disableHotkeys) && (stereoMode == Side_By_Side || stereoMode == Top_Over_Bottom || stereoMode == Free_View) &&
 			abs(uv.x - cursorCoord.x) < cursorDim.x && abs(uv.y - cursorCoord.y) < cursorDim.y) {
 		float2 iconCoords = iconUV(uv, cursorCoord);
 		if (stereoMode == Free_View) iconCoords.y = iconCoords.y * 2.0 - 0.5;
@@ -324,7 +365,7 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 		if (horizontalSide == Left_Side) {
 			color.rgb = getColor(screenSampler, uv).rgb;
 		} else {
-			float depth = 1.0 - getDepth(depthSampler, uv, false);
+			float depth = 1.0 - getDepth(depthSampler, uv + letterboxOffset, false);
 			color.rgb = depth.rrr;
 		}
 		return color;
