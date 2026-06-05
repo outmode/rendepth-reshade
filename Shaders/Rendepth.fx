@@ -58,8 +58,8 @@ static const float2 cursorDim = float2(cursorSize / screenSize.x, cursorSize / s
 static const float gutter = 0.001;
 static const float2 minUV = float2(gutter, 0.0);
 static const float2 maxUV = float2(1.0 - gutter, 1.0);
+static const int letterboxStart = 5;
 static const int letterboxSize = 8;
-static const int letterboxStart = 4;
 
 texture2D screenTexture : COLOR;
 sampler2D screenSampler {
@@ -228,6 +228,13 @@ float2 getUV(float2 uv, int horz, int vert) {
 	return result;
 }
 
+float2 clampEdge(float2 inUV) {
+	const float edgeStretch = 0.333;
+	if (inUV.x < minUV.x) inUV.x = (minUV.x - inUV.x) * edgeStretch;
+	if (inUV.x > maxUV.x) inUV.x = maxUV.x + (maxUV.x - inUV.x) * edgeStretch;
+	return clamp(inUV, minUV, maxUV);
+}
+
 float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosition, int horz, int vert) {
 	float3 result = float3(1, 1, 1);
 	int2 currentPixel = int2(pixelPosition.xy);	
@@ -262,11 +269,28 @@ float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosit
 	return result;
 }
 
-float2 clampEdge(float2 inUV) {
-	const float edgeStretch = 0.333;
-	if (inUV.x < minUV.x) inUV.x = (minUV.x - inUV.x) * edgeStretch;
-	if (inUV.x > maxUV.x) inUV.x = maxUV.x + (maxUV.x - inUV.x) * edgeStretch;
-	return clamp(inUV, minUV, maxUV);
+float letterboxAdjust(bool pillar) {
+	float result = 0.0;
+	float lastDepth = -1.0;
+	float depthDiff = 0.0;
+	bool depthValid = false;
+	int checkCount = 0;
+	int checkStart = pillar ? 1 : 0;
+	for (int i = checkStart; i < checkStart + 4; i++) {
+		for (int j = letterboxStart; j < letterboxSize; j++) {
+			float2 samplePoint = float2(i, j);
+			if (pillar) samplePoint = float2(j, i);
+			float depthValue = getDepth(depthSampler, samplePoint / letterboxSize);
+			if (lastDepth >= 0.0) depthDiff += abs(depthValue - lastDepth);
+			if(!depthValid && checkCount > 9 && depthDiff > 0.01 && depthValue > 0.05) {
+				result = clamp((letterboxStart - j + checkStart) / (float)letterboxSize, -1.0, 1.0);
+				depthValid = true;
+			}
+			lastDepth = depthValue;
+			checkCount++;
+		}
+	}
+	return result;
 }
 
 float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, float2 displace) {
@@ -309,20 +333,7 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 	float2 cursorCoord = float2(0, 0);
 
 	float2 letterboxOffset = float2(0, 0);
-	if (letterboxFix) {
-		int letterboxCheckCount = 0;
-		bool letterboxDepthValid = false;
-		for (int i = 1; i < 4; ++i) {
-			for (int j = letterboxStart; j < letterboxSize; ++j) {
-				float letterboxDepth = getDepth(depthSampler, float2(i, j) / letterboxSize);
-				if(!letterboxDepthValid && letterboxCheckCount > 8 && letterboxDepth > 0.05) {
-					letterboxOffset.y = clamp((letterboxStart - j + 1) / (float)letterboxSize, -1.0, 0.0);
-					letterboxDepthValid = true;
-				}
-				letterboxCheckCount++;
-			}
-		}
-	}
+	if (letterboxFix) letterboxOffset = float2(letterboxAdjust(true), letterboxAdjust(false));
 
 	if (stereoMode == Monoscopic) {
 		color.rgb = getColor(screenSampler, uv).rgb;
