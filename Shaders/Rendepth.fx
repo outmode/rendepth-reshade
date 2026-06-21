@@ -21,14 +21,15 @@
 #include "ReShade.fxh"
 
 #define Monoscopic 0
-#define Anaglyph 1
-#define Side_By_Side 2
-#define Top_Over_Bottom 3
-#define Color_Plus_Depth 4
-#define Free_View 5
-#define Horizontal_Interlace 6
-#define Vertical_Interlace 7
-#define Checkerboard 8
+#define Anaglyph_Accurate 1
+#define Anaglyph_Vivid 2
+#define Side_By_Side 3
+#define Top_Over_Bottom 4
+#define Color_Plus_Depth 5
+#define Free_View 6
+#define Horizontal_Interlace 7
+#define Vertical_Interlace 8
+#define Checkerboard 9
 
 #define Left_Side 0
 #define Right_Side 1
@@ -41,15 +42,23 @@ static const float zFar = 100.0;
 static const float stereoScale = 50000.0;
 static const float depthSamples[5] = { 0.125, 0.250, 0.375, 0.500, 0.625 };
 static const int sampleCount = 5;
-static const float3x3 leftFilter = float3x3(
+static const float3x3 leftAccurate = float3x3(
 	float3(0.439, 0.0, 0.0),
 	float3(0.447, 0.0, 0.0),
 	float3(0.148, 0.0, 0.0));
-static const float3x3 rightFilter = float3x3(
+static const float3x3 rightAccurate = float3x3(
 	float3(0.0, 0.095, -0.018),
 	float3(0.0, 0.934, -0.028),
 	float3(0.0, -0.005, 1.057));
-static const float3 gammaMap = float3(1.6, 0.8, 1.0);
+static const float3x3 leftVivid = float3x3(
+	float3(0.4561, -0.400822, -0.0152161),
+	float3(0.500484, -0.0378246, -0.0205971),
+	float3(0.176381 , -0.0157589, -0.00546856));
+static const float3x3 rightVivid = float3x3(
+	float3(-0.0434706, 0.378476, -0.0721527),
+	float3(-0.0879388 , 0.73364, -0.112961),
+	float3(-0.00155529, -0.0184503, 1.2264));
+static const float3 gammaMap = float3(1.10, 1.05, 1.05);
 static const float2 cursorOffset = float2(0.0015, 0.0125);
 static const float cursorSize = 512.0;
 static const float2 screenSize = float2(BUFFER_WIDTH, BUFFER_HEIGHT);
@@ -91,7 +100,7 @@ uniform int stereoMode <
 	ui_label = "Display Mode";
 	ui_tooltip = "3D Output Type";
 	ui_type = "combo"; 
-	ui_items = "Monoscopic\0Anaglyph\0Side-by-Side\0Top-Bottom\0Color+Depth\0Free-View\0Horizontal\0Vertical\0Checkerboard\0";
+	ui_items = "Stereo 3D Disabled\0Accurate Anaglyph\0Vivid Anaglyph\0Side-by-Side\0Top-Bottom\0Color+Depth\0Free-View\0Horizontal\0Vertical\0Checkerboard\0";
 > = 0;
 
 uniform float stereoStrength <
@@ -121,14 +130,20 @@ uniform float stereoOffset <
 	ui_step = 1.0; 
 > = 50.0;
 
-uniform bool letterboxFix <
+uniform bool anaglyphBoost <
 #if __RESHADE__ >= 40500
 	ui_text = "Press \'+\' to toggle side-by-side mouse cursor.\nPress \'-\' to toggle 2D mode for unsupported scenes.";
 #endif
+	ui_label = "Anaglyph Boost";
+	ui_tooltip = "Saturate Colors for Anaglyph";
+	ui_category = "Advanced Options";
+	ui_category_closed = true;
+> = false;
+
+uniform bool letterboxFix <
 	ui_label = "Letterbox Fix";
 	ui_tooltip = "Reposition Depthmap Y-Axis";
 	ui_category = "Advanced Options";
-	ui_category_closed = true;
 > = false;
 
 uniform bool disableHotkeys <
@@ -243,9 +258,12 @@ float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosit
 		leftColor = rightColor;
 		rightColor = tempColor;
 	}
-	if (stereoMode == Anaglyph) {
-		result = saturate(mul(leftColor, leftFilter)) + saturate(mul(rightColor,rightFilter));
-		result = correctColor(result);
+	if (stereoMode == Anaglyph_Accurate) {
+		result = saturate(mul(leftColor, leftAccurate)) + saturate(mul(rightColor, rightAccurate));
+		if (anaglyphBoost) result = correctColor(result);
+	} else if (stereoMode == Anaglyph_Vivid) {
+		result = saturate(mul(leftColor, leftVivid)) + saturate(mul(rightColor, rightVivid));
+		if (anaglyphBoost) result = correctColor(result);
 	} else if (stereoMode == Side_By_Side) {
 		if (horz == Left_Side) result = leftColor;
 		else result = rightColor;
