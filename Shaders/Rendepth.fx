@@ -39,7 +39,7 @@
 
 static const float zNear = 0.1;
 static const float zFar = 100.0;
-static const float stereoScale = 50000.0;
+static const float stereoScale = 25000.0;
 static const float depthSamples[5] = { 0.125, 0.250, 0.375, 0.500, 0.625 };
 static const int sampleCount = 5;
 static const float3x3 leftAccurate = float3x3(
@@ -181,15 +181,15 @@ uniform float2 mousePosition <
 >;
 
 float getStereoStrength() {
-	return stereoStrength / 100.0 * 0.25 + 0.25;
+	return stereoStrength / 100.0 * 2.0;
 }
 
 float getStereoDepth() {
-	return stereoDepth / 100.0 * 8.0 - 0.25;
+	return stereoDepth / 100.0 * 2.0;
 }
 
 float getStereoOffset() {
-	return (1.0 - stereoOffset / 100.0) / 100.0;
+	return (1.0 - stereoOffset / 100.0) / 50.0;
 }
 
 float getParallax(float depth) {
@@ -318,13 +318,13 @@ float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, 
 	float2 sampleUV = float2(0, 0);
 
 	for (int i = 0; i < sampleCount; ++i) {
-		sampleUV.x = (depthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset();
+		sampleUV.x = (depthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset() / aspectRatio;
 		minDepthLeft = min(minDepthLeft, getDepth(depthSampler, clampEdge(uv + displace + sampleUV)));
 		minDepthRight = min(minDepthRight, getDepth(depthSampler, clampEdge(uv + displace - sampleUV)));
 	}
 
-	float parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale + getStereoOffset();
-	float parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale + getStereoOffset();
+	float parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale + getStereoOffset() / aspectRatio;
+	float parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale + getStereoOffset() / aspectRatio;
 
 	if (toggleMono && !disableHotkeys) {
 		parallaxLeft = 0.0;
