@@ -16,13 +16,13 @@ Now included with the official [ReShade installer](https://reshade.me)
 
 ## 3D Screenshots
 
-![Still_Wakes_02_anaglyph](https://github.com/user-attachments/assets/189388d4-f743-45e9-9de5-ded16a016f79)
+<img width="7680" height="2160" alt="haste_sbs" src="https://github.com/user-attachments/assets/a8b042de-7d59-4d70-9dc4-90348b666e2d" />
 
-![Still_Wakes_02_sbs](https://github.com/user-attachments/assets/5bc7e1d1-9eaa-44aa-837c-cfc42439450a)
+<img width="7680" height="2160" alt="shadow_war_sbs" src="https://github.com/user-attachments/assets/cc9d676e-34db-44c0-a4fb-2b2138553145" />
 
-![Silent_Hill_f_01_anaglyph](https://github.com/user-attachments/assets/b9ba3495-8ce7-446a-9f96-5a65f9983c7b)
+<img width="7680" height="2160" alt="mirrors_edge_sbs" src="https://github.com/user-attachments/assets/b81d6b1f-1eb4-47eb-b182-950d5040a965" />
 
-![Silent_Hill_f_01_sbs](https://github.com/user-attachments/assets/4f89fd7a-824f-4700-8384-5079ac7f33d6)
+<img width="7680" height="2160" alt="tekken7_sbs" src="https://github.com/user-attachments/assets/4aeb46e6-db24-43f9-a640-8cf6fec6508c" />
 
 #### Enjoying Rendepth? Consider donating to support further development: https://rendepth.com/donate
 
@@ -62,7 +62,7 @@ Now included with the official [ReShade installer](https://reshade.me)
 
 ## Settings
 
-After installation, press the ReShade key (default `Home` key) to access the menu. Make sure the checkbox next to `Rendepth [Rendepth.fx]` is checked to enable the 2D-to-3D conversion shader. In the Rendepth menu, the top slider is the distance between your eyes. In most cases you can set the value to `100` for maximum 3D effect, though lowering the value can help mitigate artifacts. The middle option controls how strong the depth is evaluated to. It is typically safe to increase this value to `100` for a more extreme depth range. The bottom most slider is the parallax overlap. This shifts the images left or right to make the overlap more comfortable (plane of focus). This value is content dependent but usually acceptable near the center, or all the way at `0`. For most games, setting the values to `75` `100` `50` provides a good result. More immersive depth can be obtained with the values `100` `100` and `0`. After you find acceptable settings, click the `Performance mode` checkbox on the bottom right to optimize the shader performance.
+After installation, press the ReShade key (default `Home` key) to access the menu. Make sure the checkbox next to `Rendepth [Rendepth.fx]` is checked to enable the 2D-to-3D conversion shader. In the Rendepth menu, the top slider is the distance between your eyes. In most cases you can leave the value at `50` for optimal 3D effect, though lowering the value can help mitigate artifacts. The middle option controls how strong the depth is evaluated to. It is typically safe to increase this value to `100` for a more extreme depth range. The bottom most slider is the parallax overlap. This shifts the images left or right to make the overlap more comfortable (plane of focus). This value is content dependent but usually acceptable near the center, or at a low value of `25`. For most games, default settings of `50` `50` `50` provides a good result. More immersive depth can be obtained with the values `25` `75` and `25`. After you find acceptable settings, click the `Performance mode` checkbox on the bottom right to optimize the shader performance.
 
 ## Warning
 
