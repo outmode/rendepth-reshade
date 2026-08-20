@@ -3,6 +3,10 @@
 
 2D-to-3D Conversion ReShade Plug-In.
 
+[Check the PRAGMATA "3D Mod" Tutorial](https://cybereality.com/pragmata-stereo-3d-mod-setup-guide)
+
+Now included with the official [ReShade installer](https://reshade.me)
+
 ## Features
 - Optimized to provide minimal artifacts, halos, or ghosting.
 - Includes newly developed red/cyan anaglyph filter for more natural colors.
