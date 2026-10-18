@@ -40,8 +40,11 @@
 static const float zNear = 0.1;
 static const float zFar = 100.0;
 static const float stereoScale = 25000.0;
-static const float depthSamples[5] = { 0.125, 0.250, 0.375, 0.500, 0.625 };
-static const int sampleCount = 5;
+static const float depthSamples[9] = { -0.5, -0.25, -0.125, 0.0, 0.25, 0.3, 0.5, 0.75, 1.0 };
+static const int sampleCount = 9;
+static const float searchDepth = 0.02;
+static const float originalDepthSamples[5] = { 0.125, 0.250, 0.375, 0.500, 0.625 };
+static const int originalSampleCount = 5;
 static const float3x3 leftAccurate = float3x3(
 	float3(0.439, 0.0, 0.0),
 	float3(0.447, 0.0, 0.0),
@@ -142,8 +145,14 @@ uniform bool anaglyphBoost <
 
 uniform bool letterboxFix <
 	ui_label = "Letterbox Fix";
-	ui_tooltip = "Reposition Depthmap Y-Axis";
+	ui_tooltip = "Reposition Depthmap Axis";
 	ui_category = "Advanced Options";
+> = false;
+
+uniform bool disableDepthAA <
+    ui_label = "Disable Depth AA";
+    ui_tooltip = "Disable Depth AA and Stereo Reconstruction";
+    ui_category = "Advanced Options";
 > = false;
 
 uniform bool disableHotkeys <
@@ -250,6 +259,75 @@ float2 clampEdge(float2 inUV) {
 	return clamp(inUV, minUV, maxUV);
 }
 
+float getDepthAA(float2 uv) {
+	const int blurSamples = 4;
+	const float blurRadius = 1.0;
+	const float blurSigma = blurSamples / 3.0;
+	const float edgeScale = 0.25;
+	const float centerDepth = getDepth(depthSampler, clampEdge(uv));
+	const float2 texel = float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT);
+
+	const float topLeft = getDepth(depthSampler, clampEdge(uv + float2(-texel.x, -texel.y)));
+	const float top = getDepth(depthSampler, clampEdge(uv + float2(0.0, -texel.y)));
+	const float topRight = getDepth(depthSampler, clampEdge(uv + float2(texel.x, -texel.y)));
+	const float left = getDepth(depthSampler, clampEdge(uv + float2(-texel.x, 0.0)));
+	const float right = getDepth(depthSampler, clampEdge(uv + float2(texel.x, 0.0)));
+	const float bottomLeft = getDepth(depthSampler, clampEdge(uv + float2(-texel.x, texel.y)));
+	const float bottom = getDepth(depthSampler, clampEdge(uv + float2(0.0, texel.y)));
+	const float bottomRight = getDepth(depthSampler, clampEdge(uv + float2(texel.x, texel.y)));
+
+	const float dx = ((topLeft + 2.0 * left + bottomLeft) - (topRight + 2.0 * right + bottomRight)) * 0.25;
+	const float dy = ((topLeft + 2.0 * top + topRight) - (bottomLeft + 2.0 * bottom + bottomRight)) * 0.25;
+	const float neighborMin = min(min(min(topLeft, top), min(topRight, left)),
+		min(min(right, bottomLeft), min(bottom, bottomRight)));
+	const float neighborMax = max(max(max(topLeft, top), max(topRight, left)),
+		max(max(right, bottomLeft), max(bottom, bottomRight)));
+	const float despeckled = clamp(centerDepth, neighborMin, neighborMax);
+	const float neighborAverage = (topLeft + top + topRight + left
+		+ right + bottomLeft + bottom + bottomRight) * 0.125;
+	const float curvature = abs(despeckled - neighborAverage);
+
+	const float2 gradient = float2(dx, dy);
+	const float slope = length(gradient);
+	const float2 direction = slope > 0.000001 ? gradient / slope : float2(0.0, 1.0);
+	const float2 tangent = float2(-direction.y, direction.x) * texel * blurRadius;
+
+	float depth = 0.0;
+	float weightSum = 0.0;
+	[unroll]
+	for (int i = -blurSamples; i <= blurSamples; ++i) {
+		const float weight = exp(-(i * i) / (2.0 * blurSigma * blurSigma));
+		depth += getDepth(depthSampler, clampEdge(uv + tangent * i)) * weight;
+		weightSum += weight;
+	}
+	depth /= weightSum;
+
+	const float edge = saturate(curvature / (max(despeckled, 0.001) * edgeScale));
+	return lerp(despeckled, depth, edge);
+}
+
+float getMaskDepth(float2 uv) {
+    if (disableDepthAA) return getDepth(depthSampler, uv);
+	return getDepthAA(uv);
+}
+
+float3 getStereoColor(float2 uv) {
+	const float pixelX = uv.x * BUFFER_WIDTH - 0.5;
+	const float baseX = floor(pixelX);
+	const float t = pixelX - baseX;
+	const float2 centerUV = float2((baseX + 0.5) * BUFFER_RCP_WIDTH, uv.y);
+	const float3 c0 = getColor(screenSampler, clampEdge(centerUV - float2(BUFFER_RCP_WIDTH, 0.0))).rgb;
+	const float3 c1 = getColor(screenSampler, clampEdge(centerUV)).rgb;
+	const float3 c2 = getColor(screenSampler, clampEdge(centerUV + float2(BUFFER_RCP_WIDTH, 0.0))).rgb;
+	const float3 c3 = getColor(screenSampler, clampEdge(centerUV + float2(2.0 * BUFFER_RCP_WIDTH, 0.0))).rgb;
+	const float t2 = t * t;
+	const float t3 = t2 * t;
+	const float3 color = 0.5 * (2.0 * c1 + (c2 - c0) * t
+		+ (2.0 * c0 - 5.0 * c1 + 4.0 * c2 - c3) * t2
+		+ (3.0 * c1 - c0 - 3.0 * c2 + c3) * t3);
+	return clamp(color, min(c1, c2), max(c1, c2));
+}
+
 float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosition, int horz, int vert) {
 	float3 result = float3(1, 1, 1);
 	int2 currentPixel = int2(pixelPosition.xy);	
@@ -288,37 +366,38 @@ float3 combineStereoViews(float3 leftColor, float3 rightColor, float4 pixelPosit
 }
 
 float letterboxAdjust(bool pillar) {
-	float result = 0.0;
-	float lastDepth = -1.0;
-	float depthDiff = 0.0;
-	bool depthValid = false;
-	int checkCount = 0;
-	int checkStart = pillar ? 1 : 0;
-	for (int i = checkStart; i < checkStart + 4; i++) {
-		for (int j = letterboxStart; j < letterboxSize; j++) {
-			float2 samplePoint = float2(i, j);
-			if (pillar) samplePoint = float2(j, i);
-			float depthValue = getDepth(depthSampler, samplePoint / letterboxSize);
-			if (lastDepth >= 0.0) depthDiff += abs(depthValue - lastDepth);
-			if(!depthValid && checkCount > 9 && depthDiff > 0.01 && depthValue > 0.05) {
-				result = clamp((letterboxStart - j + checkStart) / (float)letterboxSize, -1.0, 1.0);
-				depthValid = true;
-			}
-			lastDepth = depthValue;
-			checkCount++;
-		}
+	const float blackThreshold = 0.01;
+	const int sampleStart = 2;
+	const int letterboxProbeCount = 4;
+	int edgeBlackCount = 0;
+	for (int i = sampleStart; i < sampleStart + letterboxProbeCount; i++) {
+		float2 samplePoint = pillar ? float2(letterboxSize - 1, i) : float2(i, letterboxSize - 1);
+		float3 color = getColor(screenSampler, samplePoint / letterboxSize).rgb;
+		if (max(max(color.r, color.g), color.b) <= blackThreshold) edgeBlackCount++;
 	}
-	return result;
+	if (edgeBlackCount < 3) return 0.0;
+
+	for (int j = letterboxSize - 2; j >= letterboxStart; j--) {
+		int contentCount = 0;
+		for (int i = sampleStart; i < sampleStart + letterboxProbeCount; i++) {
+			float2 samplePoint = pillar ? float2(j, i) : float2(i, j);
+			float3 color = getColor(screenSampler, samplePoint / letterboxSize).rgb;
+			if (max(max(color.r, color.g), color.b) > blackThreshold) contentCount++;
+		}
+		if (contentCount >= 2)
+			return clamp((letterboxStart - j + (pillar ? 1 : 0)) / (float)letterboxSize, -1.0, 1.0);
+	}
+	return 0.0;
 }
 
-float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, float2 displace) {
+float3 generateOriginalStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, float2 displace) {
 	const float centerDepth = getDepth(depthSampler, clampEdge(uv + displace));
 	float minDepthLeft = centerDepth;
 	float minDepthRight = centerDepth;
 	float2 sampleUV = float2(0, 0);
 
-	for (int i = 0; i < sampleCount; ++i) {
-		sampleUV.x = (depthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset() / aspectRatio;
+	for (int i = 0; i < originalSampleCount; ++i) {
+		sampleUV.x = (originalDepthSamples[i] * getStereoStrength() / aspectRatio) / stereoScale + getStereoOffset() / aspectRatio;
 		minDepthLeft = min(minDepthLeft, getDepth(depthSampler, clampEdge(uv + displace + sampleUV)));
 		minDepthRight = min(minDepthRight, getDepth(depthSampler, clampEdge(uv + displace - sampleUV)));
 	}
@@ -335,6 +414,40 @@ float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, 
 	float3 colorRight = getColor(screenSampler, clampEdge(uv - float2(parallaxRight, 0.0))).rgb;
 
 	return combineStereoViews(colorLeft, colorRight, pixelPosition, horz, vert);
+}
+
+float3 generateReconstructedStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, float2 displace) {
+	if (toggleMono && !disableHotkeys) {
+		float3 monoColor = getColor(screenSampler, clampEdge(uv)).rgb;
+		return combineStereoViews(monoColor, monoColor, pixelPosition, horz, vert);
+	}
+
+	const float offset = getStereoOffset() / aspectRatio;
+	const float2 leftUV = uv + float2(offset, 0.0);
+	const float2 rightUV = uv - float2(offset, 0.0);
+	float minDepthLeft = getMaskDepth(clampEdge(leftUV + displace));
+	float minDepthRight = getMaskDepth(clampEdge(rightUV + displace));
+
+	const float searchSpan = (getStereoStrength() / aspectRatio * getParallax(searchDepth)) / stereoScale;
+	float2 sampleUV = float2(0, 0);
+	for (int i = 0; i < sampleCount; ++i) {
+		sampleUV.x = depthSamples[i] * searchSpan;
+		minDepthLeft = min(minDepthLeft, getMaskDepth(clampEdge(leftUV + displace + sampleUV)));
+		minDepthRight = min(minDepthRight, getMaskDepth(clampEdge(rightUV + displace - sampleUV)));
+	}
+
+	float parallaxLeft = (getStereoStrength() / aspectRatio * getParallax(minDepthLeft)) / stereoScale;
+	float parallaxRight = (getStereoStrength() / aspectRatio * getParallax(minDepthRight)) / stereoScale;
+
+	float3 colorLeft = getStereoColor(leftUV + float2(parallaxLeft, 0.0));
+	float3 colorRight = getStereoColor(rightUV - float2(parallaxRight, 0.0));
+
+	return combineStereoViews(colorLeft, colorRight, pixelPosition, horz, vert);
+}
+
+float3 generateStereoImage(float2 uv, float4 pixelPosition, int horz, int vert, float2 displace) {
+    if (disableDepthAA) return generateOriginalStereoImage(uv, pixelPosition, horz, vert, displace);
+	return generateReconstructedStereoImage(uv, pixelPosition, horz, vert, displace);
 }
 
 float2 iconUV(float2 uv, float2 cursorCoord) {
@@ -362,14 +475,11 @@ float4 StereoPS(float4 pixelPosition : SV_Position, float2 uv : TEXCOORD0) : SV_
 		color.rgb = generateStereoImage(getUV(uv, Both_Sides, verticalSide), pixelPosition, Both_Sides, verticalSide, letterboxOffset);
 		cursorCoord = mousePosition / screenSize * float2(1.0, 0.5) + (verticalSide - 2) * float2(0.0, 0.5);
 	} else if (stereoMode == Color_Plus_Depth) {
-		float2 scaled = uv * float2(1.0, 1.0) - float2(0.0, 0.0);
-		if (all(scaled > float2(0, 0)) && all(scaled < float2(1, 1))) {
-			if (horizontalSide == Left_Side) {
-				color.rgb = getColor(screenSampler, getUV(uv, horizontalSide, Both_Sides)).rgb;
-			} else {
-				float depth = 1.0 - getDepth(depthSampler, getUV(uv, horizontalSide, Both_Sides), false);
-				color.rgb = depth.rrr;
-			}
+		if (horizontalSide == Left_Side) {
+			color.rgb = getColor(screenSampler, uv).rgb;
+		} else {
+			float depth = 1.0 - getDepth(depthSampler, uv + letterboxOffset, false);
+			color.rgb = depth.rrr;
 		}
 	} else if (stereoMode == Free_View) {
 		float2 freeUV = getUV(uv, horizontalSide, Both_Sides);
